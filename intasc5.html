@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InTASC 5 in Action — Classroom Decision Simulator</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#fef9f0;min-height:100vh;}
+  @keyframes popIn{from{transform:scale(0.85) translateY(20px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .fade-in{animation:fadeIn 0.3s ease both;}
+  .choice-btn{
+    display:flex;align-items:flex-start;gap:10px;
+    background:#fff;border:1.5px solid #e5e7eb;
+    border-radius:13px;padding:11px 14px;
+    cursor:pointer;text-align:left;transition:all 0.2s;width:100%;
+    font-family:'Segoe UI',system-ui,sans-serif;
+  }
+  .choice-btn:hover:not(:disabled){transform:translateX(3px);}
+  .choice-btn:disabled{cursor:default;}
+  .cert-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.65);
+    backdrop-filter:blur(4px);display:flex;align-items:center;
+    justify-content:center;z-index:9999;padding:16px;
+  }
+  .cert-card{animation:popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;}
+  .retry-btn{
+    background:transparent;border-radius:11px;padding:9px 14px;
+    font-size:12.5px;font-weight:700;cursor:pointer;
+    font-family:'Segoe UI',system-ui,sans-serif;transition:background 0.2s;
+  }
+  .reset-btn{
+    margin-top:14px;background:transparent;border:1.5px solid #d1d5db;
+    border-radius:11px;padding:8px 22px;font-size:12px;cursor:pointer;
+    color:#9ca3af;font-weight:600;font-family:'Segoe UI',system-ui,sans-serif;
+    transition:all 0.2s;
+  }
+  .reset-btn:hover{border-color:#9ca3af;color:#6b7280;}
+  .cert-close-btn{
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;
+    border-radius:11px;padding:10px 32px;font-size:13px;font-weight:800;
+    color:#fff;cursor:pointer;box-shadow:0 4px 14px #6366f140;
+    font-family:'Segoe UI',system-ui,sans-serif;
+  }
+  .view-cert-btn{
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;
+    border-radius:12px;padding:11px 18px;font-size:12.5px;font-weight:800;
+    color:#fff;cursor:pointer;font-family:'Segoe UI',system-ui,sans-serif;
+    transition:transform 0.2s;
+  }
+  .view-cert-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+<div id="app" style="padding:20px 12px 48px;display:flex;flex-direction:column;align-items:center;"></div>
+
+<script>
+const S_CFG={
+  neutral:{b:"🧒",e:"",g:null},bored:{b:"😑",e:"💤",g:null},sleeping:{b:"😴",e:"zz",g:null},
+  handup:{b:"🙋",e:"✋",g:"#10b981"},thinking:{b:"🤔",e:"💭",g:"#6366f1"},
+  excited:{b:"😃",e:"💡",g:"#f59e0b"},talking:{b:"😮",e:"💬",g:"#3b82f6"},writing:{b:"📝",e:"",g:"#8b5cf6"},
+};
+const CS={
+  default:{bg:"#fef9f0",bub:null,stu:["neutral","neutral","neutral","neutral","neutral","neutral","neutral","neutral"],st:null,sc:null},
+  wrong:{bg:"#fff5f5",bub:null,stu:["sleeping","bored","sleeping","bored","sleeping","bored","sleeping","bored"],st:"Students remain passive.",sc:"#ef4444"},
+  correct:{bg:"#f0fdf4",bub:"Why do you think that?",stu:["handup","thinking","handup","excited","handup","talking","thinking","excited"],st:"Students are actively thinking!",sc:"#10b981"},
+  pair:{bg:"#f5f3ff",bub:"Talk with your partner.",stu:["talking","thinking","talking","talking","thinking","talking","talking","thinking"],st:"Students are generating ideas together.",sc:"#8b5cf6"},
+  design:{bg:"#f0fdf4",bub:"What's a better approach?",stu:["excited","writing","handup","excited","writing","handup","excited","writing"],st:"Students are designing solutions!",sc:"#10b981"},
+  debate:{bg:"#eff6ff",bub:"Can both needs be met?",stu:["talking","thinking","excited","handup","thinking","excited","talking","handup"],st:"Multiple perspectives being integrated!",sc:"#3b82f6"},
+  predict:{bg:"#eff6ff",bub:"What's your reasoning?",stu:["thinking","handup","excited","thinking","handup","writing","thinking","handup"],st:"Students predicting real phenomena!",sc:"#0ea5e9"},
+  transfer:{bg:"#f0fdf4",bub:"Tried this outside class?",stu:["handup","excited","handup","excited","handup","thinking","excited","handup"],st:"Applied independently outside class!",sc:"#10b981"},
+  writing:{bg:"#fdf4ff",bub:"What moment surprised you?",stu:["writing","thinking","writing","excited","writing","thinking","writing","excited"],st:"Writing from their own perspective!",sc:"#ec4899"},
+  cross:{bg:"#f0fdf4",bub:"Estimate the whole school?",stu:["excited","handup","excited","thinking","handup","writing","excited","handup"],st:"Math + Social Studies applied!",sc:"#14b8a6"},
+};
+
+const STEPS=[
+{subject:"Math · Fractions",accent:"#6366f1",
+situation:"4th grade math. Students just finished a fractions lesson and are successfully solving problems like 1/2 + 1/4. The teacher feels satisfied. What should happen next?",
+lens:"Are students directly applying the fraction concept to solve a real-world problem?",
+board:[{t:"✏️ Fractions lesson complete",b:true,c:"#fde68a",s:13},{t:"1/2 + 1/4 = 3/4  ✓",c:"#c8f7c5"},{t:"What's next?",c:"#86efac",s:11}],
+choices:[
+{label:"Give students 10 more similar fraction problems to solve.",sub:"More practice reinforces the skill.",ba:[{t:"📝 20 more fraction problems",b:true,c:"#fca5a5",s:12},{t:"Time limit: 20 min",c:"#c8f7c5"},{t:"Redo if wrong",c:"#c8f7c5"}],state:"wrong",wrong:true,msg:"Repetition stays within the same context. It doesn't build the ability to apply the concept in new situations."},
+{label:"Ask: \"The school festival budget is ₩120,000. If 1/3 goes to snacks, how much is that?\"",sub:"Students connect fractions to a real decision.",ba:[{t:"🎪 School Festival Budget: ₩120,000",b:true,c:"#fde68a",s:11},{t:"1/3 goes to snacks — how much?",c:"#fef9c3"},{t:"→ Figure it out yourself!",c:"#86efac"}],state:"correct",correct:true},
+{label:"Move on to the next unit: decimals.",sub:"Staying on track with the curriculum matters.",ba:[{t:"➡️ Next unit: Decimals",b:true,c:"#fed7aa",s:13},{t:"0.1,  0.5,  0.25…",c:"#c8f7c5"},{t:"(Fractions not applied)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Moving forward without a real application experience means deep understanding hasn't formed yet."},
+]},
+{subject:"Math · Measurement",accent:"#f59e0b",
+situation:"3rd grade math. A student has answered every ruler measurement problem correctly. There are suddenly no rulers in the classroom — and a student says: \"I'm curious how tall the classroom door is!\"",
+lens:"Can students apply the concept of measurement creatively without a tool — and choose the best method themselves?",
+board:[{t:"📏 Ruler measurement — complete ✓",b:true,c:"#fde68a",s:12},{t:"But… there are no rulers left!",c:"#c8f7c5"},{t:"\"How tall is the door?\" 🚪",c:"#fde68a",s:11}],
+choices:[
+{label:"Say: \"Hold on, let me go grab a tape measure.\"",sub:"Getting the right tool solves the problem quickly.",ba:[{t:"📐 Teacher fetches a tape measure",b:true,c:"#fed7aa",s:12},{t:"\"Just wait a moment\"",c:"#c8f7c5"},{t:"(Students wait — no thinking needed)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"If the teacher fetches the tool, students never discover that measurement is a concept — not just a device."},
+{label:"Say: \"It's roughly 2 meters\" and move on.",sub:"A quick answer keeps the lesson flowing.",ba:[{t:"💬 Teacher: \"About 2 meters.\"",b:true,c:"#fca5a5",s:12},{t:"Question answered, lesson continues",c:"#c8f7c5"},{t:"(Opportunity for application missed)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Giving the answer closes the door on application. This was exactly the moment to make the concept real."},
+{label:"Say: \"Figure out a way to measure it without a ruler — and explain why your method is the most accurate.\"",sub:"Students apply measurement as a concept, not a tool.",ba:[{t:"🚪 Measure the door — no ruler!",b:true,c:"#fde68a",s:12},{t:"Which method is most accurate?",c:"#fef9c3"},{t:"→ Method + reasoning required",c:"#86efac"}],state:"correct",correct:true},
+]},
+{subject:"Science · Water Cycle",accent:"#0ea5e9",
+situation:"5th grade science. Students just learned the signs of rain: thickening clouds, rising humidity, and falling air pressure. The teacher wants to assign homework connecting this to real life.",
+lens:"Are students using the water cycle concept to directly predict a real phenomenon?",
+board:[{t:"🌧️ Signs of upcoming rain:",b:true,c:"#bfdbfe",s:12},{t:"Clouds↑   Humidity↑   Pressure↓",c:"#c8f7c5"},{t:"What homework should we assign?",c:"#fde68a",s:11}],
+choices:[
+{label:"Keep a weather journal for two weeks — record the weather every day.",sub:"Consistent observation builds scientific habits.",ba:[{t:"📓 2-Week Weather Journal",b:true,c:"#fca5a5",s:12},{t:"Record the weather daily",c:"#c8f7c5"},{t:"(Observation, not application)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Recording is observation. Applying the concept means predicting why the weather happens, not just logging it."},
+{label:"Screenshot tomorrow's weather from a forecast app and bring it in.",sub:"Using technology to access accurate information.",ba:[{t:"📱 Screenshot tomorrow's forecast",b:true,c:"#fed7aa",s:12},{t:"Use a weather app to check",c:"#c8f7c5"},{t:"(App predicts — student doesn't)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"The app does the predicting. The student just retrieves the answer — the concept isn't being applied."},
+{label:"Observe the sky this morning, predict whether it will rain using the water cycle concept, and write one sentence explaining why.",sub:"Students use today's lesson to predict tomorrow's reality.",ba:[{t:"☁️ Observe the sky this morning!",b:true,c:"#bfdbfe",s:11},{t:"Predict rain using water cycle concepts",c:"#fef9c3"},{t:"→ Write one sentence: why?",c:"#86efac"}],state:"predict",correct:true},
+]},
+{subject:"Language Arts · Story",accent:"#a855f7",
+situation:"The teacher asks: \"Did the main character make the right choice?\" No one responds. Fifteen seconds of silence pass. The classroom feels tense.",
+lens:"Is the teacher creating a structure where students generate and build on their own ideas?",
+board:[{t:"📖 Did the character make the right choice?",b:true,c:"#e9d5ff",s:11},{t:"…",c:"#c8f7c5"},{t:"15 seconds of silence 😶",c:"#fde68a",s:11}],
+choices:[
+{label:"Say: \"Talk with your partner for 30 seconds — what do you think?\"",sub:"Students share ideas before the whole-class discussion.",ba:[{t:"💬 Partner talk — 30 seconds!",b:true,c:"#c4b5fd",s:12},{t:"→ Share ideas, then report back",c:"#fef9c3"},{t:"No single right answer — reasoning matters!",c:"#86efac"}],state:"pair",correct:true},
+{label:"Say: \"Let me explain — I think the character was right, because…\"",sub:"The teacher steps in to keep the lesson moving.",ba:[{t:"👩‍🏫 Teacher: \"The character was right…\"",b:true,c:"#fca5a5",s:11},{t:"Teacher explains the answer",c:"#c8f7c5"},{t:"(Student thinking stops)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"When the teacher answers first, student thinking stops. Silence is the time when thinking happens."},
+{label:"Say: \"Check page 45 in your textbook — there's a hint there.\"",sub:"Giving students a starting point when they're stuck.",ba:[{t:"📚 Textbook p. 45 — find a hint",b:true,c:"#fed7aa",s:12},{t:"Look it up",c:"#c8f7c5"},{t:"(Searching, not forming a view)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Finding a textbook answer isn't forming a personal perspective. Critical thinking comes from one's own reasoning."},
+]},
+{subject:"Language Arts · Book Report",accent:"#ec4899",
+situation:"It's book report writing time. One student asks: \"How do I start?\" Five other students have the same look on their faces.",
+lens:"Are students beginning to write from their own perspective?",
+board:[{t:"✏️ Book Report Writing",b:true,c:"#fde68a",s:13},{t:"Write freely!",c:"#c8f7c5"},{t:"\"How do I even start?\" 🤔",c:"#fde68a",s:11}],
+choices:[
+{label:"Say: \"Start by introducing the main character — name, personality, then the events.\"",sub:"A clear structure helps students who are stuck.",ba:[{t:"📋 Start: introduce the main character",b:true,c:"#fca5a5",s:11},{t:"Name → Personality → Events",c:"#c8f7c5",s:10.5},{t:"(Student's own voice missing)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Giving a structure produces writing, but strips away the student's own thinking. It becomes a summary, not a reflection."},
+{label:"Say: \"Look at the example on page 67 and use it as a reference.\"",sub:"An example gives students a model to work from.",ba:[{t:"📖 See example on p. 67",b:true,c:"#fed7aa",s:12},{t:"Use it as a reference",c:"#c8f7c5"},{t:"(Student's perspective missing)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Following an example removes personal perspective. Creativity means applying ideas in your own way."},
+{label:"Ask: \"What moment in the book surprised you the most? Start there.\"",sub:"Students begin with their own emotional response.",ba:[{t:"😲 What moment surprised you most?",b:true,c:"#e9d5ff",s:11},{t:"→ Start from that feeling!",c:"#fef9c3"},{t:"Your perspective IS the book report.",c:"#86efac"}],state:"writing",correct:true},
+]},
+{subject:"PE · Basketball",accent:"#f97316",
+situation:"5th grade PE. Students all passed the dribbling skills test. But during a 3v3 game, every student just dribbles and never passes. The team keeps losing.",
+lens:"Can students decide when and how to apply a skill in a real game situation — not just execute it in isolation?",
+board:[{t:"🏀 Dribbling test — all passed! ✓",b:true,c:"#fde68a",s:12},{t:"But in the actual game...",c:"#c8f7c5"},{t:"Nobody is passing. Team keeps losing.",c:"#fde68a",s:11}],
+choices:[
+{label:"Stop the game and say: \"You need to pass too — that's how teams win.\"",sub:"Direct instruction clarifies the expected behavior.",ba:[{t:"👩🏻‍🏫 \"You need to pass!\"",b:true,c:"#fca5a5"},{t:"Teacher explains the rule",c:"#c8f7c5"},{t:"(Student thinking skipped)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Telling students what to do skips the thinking. InTASC 5 is about students figuring out why — not just being told."},
+{label:"Stop the game and ask: \"Why do you think your team keeps losing? Talk with your teammates for 30 seconds.\"",sub:"Students analyze the gap between skill and real game performance.",ba:[{t:"🏀 Why is your team losing?",b:true,c:"#fde68a"},{t:"→ Talk with teammates: 30 sec",c:"#fef9c3"},{t:"Skill ≠ knowing when to use it",c:"#86efac"}],state:"pair",correct:true},
+{label:"Run more dribbling drills to strengthen the foundational skill.",sub:"More practice on the foundational skill seems logical.",ba:[{t:"🏃 More dribbling drills!",b:true,c:"#fed7aa"},{t:"50 reps — perfect the technique",c:"#c8f7c5"},{t:"(Issue is application, not skill)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"The issue isn't the skill itself — it's knowing when to use it. More drills won't close that gap."},
+]},
+{subject:"Social Studies · Environment",accent:"#10b981",
+situation:"During a group presentation, Team A proposes: \"We should give demerits for leaving food on lunch trays.\" Several classmates respond: \"That's unfair!\"",
+lens:"Are students designing a better solution themselves and justifying their reasoning?",
+board:[{t:"🍱 Reducing School Lunch Waste",b:true,c:"#fde68a",s:12},{t:"Team A: \"Give demerits for leftovers!\"",c:"#c8f7c5"},{t:"Class: \"That's not fair!\" 😤",c:"#fde68a",s:11}],
+choices:[
+{label:"Ask students who think it's unfair to raise their hands.",sub:"Acknowledging student feelings before moving forward.",ba:[{t:"🙋 Who thinks this is unfair?",b:true,c:"#fca5a5",s:11},{t:"→ Raise your hand",c:"#c8f7c5"},{t:"(Feelings noted — no solution reached)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Acknowledging feelings is important, but stopping there doesn't lead to problem-solving."},
+{label:"Say: \"Instead of demerits, come up with three other approaches as a team. Explain why each one is better.\"",sub:"Teams directly build and evaluate solutions.",ba:[{t:"💡 Find 3 alternatives to demerits!",b:true,c:"#fde68a",s:11},{t:"Design solutions as a team",c:"#fef9c3"},{t:"→ Justify each one!",c:"#86efac"}],state:"design",correct:true},
+{label:"Say: \"Look up some data on whether demerit systems actually work.\"",sub:"Evidence-based thinking is a valuable skill.",ba:[{t:"🔍 Research: Do demerits work?",b:true,c:"#fed7aa",s:12},{t:"Find data online",c:"#c8f7c5"},{t:"(Research, not student-designed solution)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Research is useful, but InTASC 5 requires students to design solutions and judge them."},
+]},
+{subject:"Social Studies · Debate",accent:"#ef4444",
+situation:"Debate topic: \"Should the schoolyard be converted into a parking lot?\" Student A says: \"Teachers need parking!\" Student B says: \"We'll lose our playground!\" They start talking over each other.",
+lens:"Does the clash of perspectives move students toward a deeper, more integrated solution?",
+board:[{t:"🏫 Schoolyard → Parking lot?",b:true,c:"#fce7f3",s:12},{t:"A: \"Teachers need parking!\" 🅰️",c:"#c8f7c5",s:10.5},{t:"B: \"We'll lose our playground!\" 🅱️",c:"#fde68a",s:10.5}],
+choices:[
+{label:"Ask: \"Is there a solution that solves the parking problem and keeps the playground?\"",sub:"Both perspectives become the starting point for a new solution.",ba:[{t:"💡 Can we solve BOTH problems?",b:true,c:"#bfdbfe",s:12},{t:"Parking + playground — is it possible?",c:"#fef9c3"},{t:"→ Propose a solution with reasoning",c:"#86efac"}],state:"debate",correct:true},
+{label:"Assign speaking turns and set a one-minute timer for each student.",sub:"Structured turns create a calmer discussion.",ba:[{t:"⏱️ Speaking turns — 1 min each",b:true,c:"#fed7aa",s:12},{t:"1 → 2 → 3…",c:"#c8f7c5"},{t:"(Each side just repeats their view)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Structure is created but thinking stops. Each side just repeats their argument."},
+{label:"Say: \"Honestly, I do find it hard to park here, too…\"",sub:"The teacher relates to the students' experience.",ba:[{t:"😅 Teacher: \"Parking is hard for me too…\"",b:true,c:"#fca5a5",s:11},{t:"Teacher sides with one argument",c:"#fca5a5",s:10.5},{t:"(Debate collapses)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"When the teacher takes a side, the debate collapses. The conflict between perspectives is the richest learning opportunity."},
+]},
+{subject:"Math + Social Studies",accent:"#14b8a6",
+situation:"During a social studies lesson on class demographics, a student suddenly says: \"Wait — this is just like the ratios we did in math!\"",
+lens:"Are students connecting concepts across subjects and applying them to solve a real problem?",
+board:[{t:"📊 Social Studies: Class Gender Ratio",b:true,c:"#fde68a",s:11},{t:"Student: \"This is just like math ratios!\" 💡",c:"#c8f7c5"},{t:"What does the teacher do next?",c:"#fde68a",s:11}],
+choices:[
+{label:"Say: \"Great catch! You remembered what we learned in math.\" and continue the lesson.",sub:"Praising the connection reinforces the student's observation.",ba:[{t:"👍 \"Great catch!\" — lesson continues",b:true,c:"#fed7aa",s:11},{t:"Praise given, moved on",c:"#c8f7c5"},{t:"(Connection made — not applied)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Noticing a connection is a great start — but praise alone doesn't lead to application. Connection ≠ InTASC 5."},
+{label:"Say: \"Let's review ratios from math class one more time.\"",sub:"The connection becomes a review opportunity.",ba:[{t:"🔁 Ratio review — back to math class",b:true,c:"#fca5a5",s:11},{t:"Let's go over fractions again",c:"#c8f7c5",s:10.5},{t:"(Stays within one subject)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Retreating to a single subject misses the cross-disciplinary connection."},
+{label:"Ask: \"Using our class ratio, can we estimate the total number of boys and girls in the whole school?\"",sub:"The connection is immediately put to work on a real problem.",ba:[{t:"🧮 Estimate the whole school's ratio!",b:true,c:"#fde68a",s:11},{t:"Math (ratio) + Social Studies (population)",c:"#fef9c3"},{t:"→ Calculate it yourself!",c:"#86efac"}],state:"cross",correct:true},
+]},
+{subject:"Transfer · End of Semester",accent:"#8b5cf6",
+situation:"End-of-semester free journal. A student writes: \"My mom asked if the 1+1 deal at the store was actually cheaper. I calculated the unit price myself and explained it to her.\"",
+lens:"Did the student apply the concept independently, in a new situation, without the teacher's help? This is the final evidence of InTASC 5.",
+board:[{t:"📖 End-of-Semester Free Journal",b:true,c:"#fde68a",s:12},{t:"\"I calculated the unit price at the store",c:"#c8f7c5"},{t:"and explained it to my mom!\" 🛒",c:"#c8f7c5"}],
+choices:[
+{label:"Put a \"Well done! ⭐\" sticker on the journal.",sub:"Positive reinforcement encourages this kind of behavior.",ba:[{t:"⭐ \"Well done!\" sticker added",b:true,c:"#fed7aa",s:12},{t:"Encouragement given",c:"#c8f7c5"},{t:"(Transfer experience not shared)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Praise is good, but it stops here. The transfer experience stays private — a chance to share it with the whole class is lost."},
+{label:"Share it anonymously in the next class and say: \"This is exactly why we learn math.\"",sub:"One student's experience becomes the whole class's learning.",ba:[{t:"🌟 \"This is why we learn math.\"",b:true,c:"#fde68a",s:11},{t:"Shared anonymously with the class",c:"#fef9c3"},{t:"→ Has anyone else tried this?",c:"#86efac"}],state:"transfer",correct:true},
+{label:"Give the student bonus points on the next math test.",sub:"Rewarding real-world application seems fair.",ba:[{t:"📝 Bonus points on math test",b:true,c:"#fca5a5",s:12},{t:"Real-world application recognized",c:"#c8f7c5"},{t:"(Internal motivation → external reward)",c:"#fca5a5",s:10}],state:"wrong",wrong:true,msg:"Tying learning to a grade shifts motivation from intrinsic to external."},
+]},
+];
+
+const N=STEPS.length;
+let cur=0,chosen=null,csKey="default",lensOn=false,showCert=false,animating=false;
+
+function stuHTML(state){
+  const c=S_CFG[state]||S_CFG.neutral;
+  const big=state==="handup"||state==="excited";
+  return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+    <div style="font-size:9px;min-height:12px;color:#6b7280;font-weight:600">${c.e||" "}</div>
+    <div style="font-size:${big?20:18}px;transition:transform 0.3s;${c.g?`filter:drop-shadow(0 0 4px ${c.g})`:""};">${c.b}</div>
+    <div style="width:24px;height:3px;border-radius:3px;background:${c.g?"#fde68a":"#deb87a"};border:1.5px solid #c09050;${c.g?`box-shadow:0 0 5px ${c.g}44`:""}"></div>
+  </div>`;
+}
+
+function boardHTML(lines){
+  return lines.map(l=>`<div style="color:${l.c||"#c8f7c5"};font-size:${l.s||12}px;font-weight:${l.b?800:400};line-height:1.65;text-shadow:0 1px 2px rgba(0,0,0,0.3)">${l.t}</div>`).join("");
+}
+
+function render(){
+  const step=STEPS[cur];
+  const cs=CS[csKey]||CS.default;
+  const c=step.accent;
+  const isWrong=chosen!==null&&step.choices[chosen]&&step.choices[chosen].wrong;
+  const isOk=chosen!==null&&step.choices[chosen]&&step.choices[chosen].correct;
+  const isDone=cur===N-1&&isOk;
+  const today=new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
+  const tags=["Application","Critical Thinking","Creativity","Collaboration","Authentic Problems","Transfer"];
+  const currentBoard=chosen!==null?step.choices[chosen].ba:step.board;
+
+  const dots=STEPS.map((_,i)=>`<div style="width:6px;height:6px;border-radius:99px;background:${i<cur?"#10b981":i===cur?"#fff":"#4338ca"};transition:background 0.4s"></div>`).join("");
+  const progBars=STEPS.map((s,i)=>`<div style="flex:1;height:4px;border-radius:99px;background:${i<cur?s.accent:i===cur?c:"#e5e7eb"};${i===cur?`box-shadow:0 0 8px ${c}`:""}"></div>`).join("");
+
+  const choicesHTML=step.choices.map((ch,i)=>{
+    const isThis=chosen===i;
+    const faded=chosen!==null&&chosen!==i;
+    let bg="#fff",border="#e5e7eb";
+    if(isThis&&ch.correct){bg="#f0fdf4";border="#10b981";}
+    if(isThis&&ch.wrong){bg="#fff1f2";border="#ef4444";}
+    return`<button class="choice-btn" id="btn${i}" onclick="pick(${i})" ${chosen!==null?"disabled":""} style="background:${bg};border:1.5px solid ${border};opacity:${faded?0.25:1};box-shadow:${isThis?`0 0 14px ${ch.correct?"#10b98130":"#ef444430"}`:"0 1px 5px rgba(0,0,0,0.04)"}">
+      <span style="min-width:23px;height:23px;border-radius:99px;background:${isThis?(ch.correct?"#10b981":"#ef4444"):c+"1a"};color:${isThis?"#fff":c};font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center">
+        ${isThis?(ch.correct?"✓":"✗"):String.fromCharCode(65+i)}
+      </span>
+      <div style="text-align:left">
+        <div style="font-size:12.5px;font-weight:700;color:#111827;line-height:1.5">${ch.label}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px;font-style:italic">${ch.sub}</div>
+        ${isThis&&ch.wrong?`<div style="margin-top:7px;font-size:11.5px;color:#b91c1c;line-height:1.6;padding-top:7px;border-top:1px solid #fecaca">${ch.msg}</div>`:""}
+        ${isThis&&ch.correct?`<div style="margin-top:7px;font-size:11.5px;color:#065f46;line-height:1.6;padding-top:7px;border-top:1px solid #bbf7d0">✅ InTASC 5 — students are now applying the concept to a real problem!</div>`:""}
+      </div>
+    </button>`;
+  }).join("");
+
+  const certHTML=showCert?`
+  <div class="cert-overlay" id="certOverlay" onclick="closeCert(event)">
+    <div class="cert-card" style="border-radius:20px;max-width:460px;width:100%;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+      <div style="background:linear-gradient(135deg,#1e1b4b,#4338ca);padding:32px 28px 24px;text-align:center">
+        <div style="font-size:48px;margin-bottom:10px">🏆</div>
+        <div style="font-size:9px;letter-spacing:4px;color:#a5b4fc;text-transform:uppercase;margin-bottom:6px">Certificate of Completion</div>
+        <div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-0.5px">InTASC 5 in Action</div>
+      </div>
+      <div style="background:#fefce8;padding:24px 28px 20px;text-align:center">
+        <div style="font-size:12px;color:#6b7280;line-height:1.9;margin-bottom:14px">
+          This certifies successful completion of<br>
+          <strong style="color:#1e1b4b">Classroom Decision Simulator</strong><br>
+          <span style="color:#4338ca;font-weight:700">Application of Content (InTASC Standard 5)</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:18px">
+          ${tags.map(t=>`<span style="background:#ede9fe;border-radius:99px;padding:3px 11px;font-size:10px;font-weight:700;color:#4338ca">${t}</span>`).join("")}
+        </div>
+        <div style="background:#1e1b4b;border-radius:10px;padding:11px 16px;font-size:11.5px;color:#c7d2fe;line-height:1.75;margin-bottom:20px;font-style:italic">
+          "InTASC 5 happens when students apply concepts independently, in a new context, without teacher guidance."
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:20px">
+          <div style="text-align:left"><div style="font-size:9px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Date</div><div style="font-size:11px;font-weight:600;color:#374151">${today}</div></div>
+          <div style="text-align:right"><div style="font-size:9px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Scenarios</div><div style="font-size:11px;font-weight:600;color:#374151">${N}/${N} Completed</div></div>
+        </div>
+        <button class="cert-close-btn" onclick="setShowCert(false)">Close</button>
+      </div>
+    </div>
+  </div>`:"";
+
+  document.getElementById("app").innerHTML=`
+  ${certHTML}
+  <div style="text-align:center;margin-bottom:12px;max-width:920px;width:100%">
+    <div style="font-size:10px;letter-spacing:5px;color:#9ca3af;text-transform:uppercase;margin-bottom:7px">InTASC Standard 5 · Application of Content</div>
+    <div style="font-size:40px;font-weight:900;color:#1e1b4b;letter-spacing:-1.5px;line-height:1.05;margin-bottom:5px">InTASC 5 in Action</div>
+    <div style="font-size:17px;font-weight:700;color:#4338ca;margin-bottom:4px">Classroom Decision Simulator</div>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Each scenario puts you in the classroom — how would you design for InTASC 5?</div>
+    <div style="font-size:13px;font-weight:700;color:#7c3aed">Question ${cur+1} of ${N}</div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px;max-width:920px;width:100%;flex-wrap:wrap;justify-content:center">
+    <div style="background:#1e1b4b;border-radius:99px;padding:8px 18px;font-size:11px;color:#c7d2fe;flex:1 1 260px;line-height:1.6;text-align:center">
+      <span style="color:#fbbf24;font-weight:800">InTASC 5 — </span>The teacher designs learning so that students<span style="color:#86efac;font-weight:700"> independently apply concepts to real problems.</span>
+    </div>
+    <div style="background:#312e81;border-radius:99px;padding:8px 18px;display:flex;align-items:center;gap:8px;white-space:nowrap">
+      <span style="font-size:11px;color:#a5b4fc;font-weight:600">Scenario</span>
+      <span style="font-size:20px;font-weight:900;color:#fff;line-height:1">${cur+1}</span>
+      <span style="font-size:11px;color:#6366f1;font-weight:600">of</span>
+      <span style="font-size:20px;font-weight:900;color:#818cf8;line-height:1">${N}</span>
+      <div style="display:flex;gap:3px;margin-left:4px">${dots}</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:4px;margin-bottom:16px;max-width:920px;width:100%">${progBars}</div>
+
+  <div class="fade-in" style="display:flex;gap:14px;width:100%;max-width:920px;flex-wrap:wrap">
+    <div style="flex:1 1 340px;border-radius:18px;overflow:hidden;border:2px solid ${c}40;box-shadow:0 8px 28px ${c}18;background:#fff">
+      <div style="background:${c};padding:8px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:#fff;font-weight:800;font-size:12px">${step.subject}</span>
+        <span style="color:rgba(255,255,255,0.7);font-size:11px">${cur+1} / ${N}</span>
+      </div>
+      <div style="background:${cs.bg};transition:background 0.5s">
+        <div style="margin:12px 12px 8px;background:#2d5a27;border-radius:10px;padding:28px 13px 12px 13px;border:4px solid #5a3e2b;min-height:80px;position:relative;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3),0 3px 0 #5a3e2b">
+          <div style="position:absolute;bottom:-7px;left:0;right:0;height:7px;background:#7a5c3a;border-radius:0 0 6px 6px"></div>
+          <div style="position:absolute;top:8px;left:10px;font-size:9px;color:#fde68a;opacity:0.7;font-weight:600">🍎 Moreland TeachNow</div>
+          <div style="position:absolute;top:8px;right:10px;font-size:9px;color:#fde68a;font-weight:700">${step.subject}</div>
+          ${boardHTML(currentBoard)}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:6px 12px 8px">
+          <div style="font-size:28px;line-height:1">👩🏻‍🏫</div>
+          ${cs.bub?`<div style="background:#fff;border:2px solid ${c};border-radius:13px;padding:5px 11px;font-size:11px;font-weight:700;color:${c};position:relative">
+            ${cs.bub}
+            <div style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);border-top:6px solid transparent;border-bottom:6px solid transparent;border-right:8px solid ${c}"></div>
+          </div>`:""}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px 6px;padding:0 12px 8px">
+          ${cs.stu.map(s=>stuHTML(s)).join("")}
+        </div>
+        <div style="margin:0 12px 10px;min-height:28px">
+          ${cs.st?`<div style="background:${cs.sc}15;border:1.5px solid ${cs.sc}40;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;color:${cs.sc};text-align:center">${cs.st}</div>`:""}
+        </div>
+      </div>
+      <div style="padding:9px 13px;min-height:40px;border-top:1px solid ${c}20;background:#f8f8f8">
+        ${lensOn?`<div style="font-size:11px;color:${c};font-weight:700;line-height:1.5">🔑 ${step.lens}</div>`:`<div style="min-height:16px"></div>`}
+      </div>
+    </div>
+
+    <div style="flex:1 1 300px;display:flex;flex-direction:column;gap:9px">
+      <div style="background:#fff;border:1.5px solid #e5e7eb;border-radius:14px;padding:13px 16px;box-shadow:0 2px 10px rgba(0,0,0,0.05)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#9ca3af;text-transform:uppercase;margin-bottom:5px">Scenario</div>
+        <div style="font-size:13px;color:#1f2937;line-height:1.82;font-weight:500">${step.situation}</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#9ca3af;text-transform:uppercase;padding-left:4px">As the teacher, what do you do?</div>
+      ${choicesHTML}
+      ${isWrong?`<button class="retry-btn" id="retryBtn" onclick="retry()" style="border:1.5px solid ${c};color:${c}">↩ Try again</button>`:""}
+      ${isOk&&!isDone?`<div style="font-size:11.5px;color:#9ca3af;text-align:center;padding:8px">Moving to next scenario...</div>`:""}
+      ${isDone&&!showCert?`<button class="view-cert-btn" onclick="setShowCert(true)">🏆 View your certificate</button>`:""}
+    </div>
+  </div>
+
+  ${isDone?`<button class="reset-btn" onclick="reset()">🔄 Start over</button>`:""}
+  `;
+
+  // hover 이벤트
+  step.choices.forEach((_,i)=>{
+    const btn=document.getElementById("btn"+i);
+    if(!btn||chosen!==null)return;
+    const accent=step.accent;
+    btn.addEventListener("mouseenter",()=>{btn.style.borderColor=accent;btn.style.background=accent+"10";btn.style.transform="translateX(3px)";});
+    btn.addEventListener("mouseleave",()=>{btn.style.borderColor="#e5e7eb";btn.style.background="#fff";btn.style.transform="";});
+  });
+
+  const retryBtn=document.getElementById("retryBtn");
+  if(retryBtn){
+    const accent=step.accent;
+    retryBtn.addEventListener("mouseenter",()=>{retryBtn.style.background=accent+"18";});
+    retryBtn.addEventListener("mouseleave",()=>{retryBtn.style.background="transparent";});
+  }
+}
+
+function pick(i){
+  if(chosen!==null||animating)return;
+  const step=STEPS[cur];
+  const ch=step.choices[i];
+  chosen=i;csKey=ch.state;
+  render();
+  setTimeout(()=>{lensOn=true;render();},400);
+  if(ch.correct){
+    if(cur<N-1){
+      setTimeout(()=>{
+        animating=true;
+        setTimeout(()=>{cur++;chosen=null;csKey="default";lensOn=false;animating=false;render();},340);
+      },1800);
+    } else {
+      setTimeout(()=>{showCert=true;render();},1000);
+    }
+  }
+}
+function retry(){chosen=null;csKey="default";lensOn=false;render();}
+function reset(){cur=0;chosen=null;csKey="default";lensOn=false;showCert=false;animating=false;render();}
+function setShowCert(v){showCert=v;render();}
+function closeCert(e){if(e.target.id==="certOverlay"){showCert=false;render();}}
+
+render();
+</script>
+</body>
+</html>
